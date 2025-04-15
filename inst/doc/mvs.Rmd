@@ -1,0 +1,383 @@
+---
+title: "An introduction to R package `mvs`"
+author: "Wouter van Loon"
+output: 
+  bookdown::html_document2:
+      base_format: rmarkdown::html_vignette
+      number_sections: false
+      toc: true
+bibliography: mvs.bib
+vignette: >
+  %\VignetteIndexEntry{An introduction to R package `mvs`}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+<style>
+p.caption {
+  font-size: 0.75em;
+}
+</style>
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup, include = FALSE}
+library(mvs)
+```
+
+# Package summary
+
+In biomedical science, a set of objects or persons can often be described by multiple distinct sets of *features* (also called *independent variables* or *predictors*) obtained from different data sources or modalities [@multiview_bio]. These feature sets are said to provide different *views* of the objects or persons under consideration. Data sets consisting of multiple views are called *multi-view data* [@multiview_review; @multiview_book; @Smilde2022][^1]. Classical machine learning methods ignore the multi-view structure of such data, limiting model interpretability and performance. The R package `mvs` provides methods that were designed specifically for dealing with multi-view data, based on the *multi-view stacking* (MVS) framework [@Li2011; @multiview_stacking; @StaPLR]. MVS is a form of supervised[^2] (machine) learning used to train multi-view classification or prediction models. MVS works by training a learning algorithm (the *base-learner*) on each view separately, estimating the predictive power of each view-specific model through cross-validation, and then using another learning algorithm (the *meta-learner*) to assign weights to the view-specific models based on their estimated predictions. MVS is a form of *ensemble learning*, dividing the large multi-view learning problem into smaller sub-problems. Most of these sub-problems can be solved in parallel, making it computationally attractive. Additionally, the number of features of the sub-problems is greatly reduced compared with the full multi-view learning problem. This makes MVS especially useful when the total number of features is larger than the number of observations (i.e., *high-dimensional* data). MVS can still be applied even if the sub-problems are themselves high-dimensional by adding suitable *penalty terms* to the learning algorithms [@StaPLR]. Furthermore, MVS can be used to automatically select the views which are most important for prediction [@StaPLR]. The R package `mvs` makes fitting MVS models, including such penalty terms, easily and openly accessible. `mvs` allows for the fitting of stacked models with any number of levels, with different penalty terms, different outcome distributions, and provides several options for missing data handling. 
+
+[^1]: Depending on the research area, multi-view data is sometimes called multi-block, multi-set, multi-group, or multi-table data [@Smilde2022].
+
+[^2]: Like classical machine learning, multi-view learning can be divided into supervised, unsupervised, and semi-supervised learning. Supervised learning means there is an outcome variable that is used to guide the learning process [@statlearn_elements]. Unsupervised learning means that only the features are observed and there is no known outcome variable [@statlearn_elements]. Semi-supervised learning refers to a setting where there is an outcome variable of interest, but it has only been measured for a subset of the observations [@Bengio]. The methods provided by the R package `mvs` are supervised learning methods. However, they could also be used for semi-supervised learning by treating the unobserved values of the outcome variable as missing data and using the provided imputation methods (see [Handling missing data]). For an overview of multi-view learning methods specific to semi-supervised or unsupervised settings see, for example, Sun et al. [-@multiview_book] and Smilde et al. [-@Smilde2022].
+
+# What is multi-view stacking?
+
+Consider the following hypothetical example: We want to build a model that can predict whether or not a person has Alzheimer's disease based on different sources of data. Additionally, we want to find out which sources are most predictive of the outcome. That way, if certain sources turn out not to be predictive, they can be omitted from future data collection. We have collected data from 200 research subjects, half of which have been diagnosed with Alzheimer, and half are healthy controls. For each subject, we have the following sources of data available:
+
+1. A structural magnetic resonance imaging (MRI) scan, containing information about the structure of the brain.
+2. A resting-state functional MRI (fMRI) scan, containing information about the functioning of the brain at rest.
+3. A blood or cerebrospinal fluid (CSF) sample, from which genetic information can be derived. 
+
+Now we could just collect all the features (independent variables) from these three *views* together into a single data frame or matrix and fit a 'traditional' feature-selecting model on the complete data. Combining the views together like this is called *feature concatenation*. However, this approach typically ignores the multi-view structure of the data. To take the multi-view structure into account, we can instead fit a multi-view stacking (MVS) model. Multi-view stacking has several advantages over feature concatenation:
+
+1. It explicitly takes into account the multi-view structure of the data.
+2. It divides a big model training problem into smaller sub-problems, which are easier to compute and can be computed in parallel. 
+3. It estimates a regression coefficient *for each view* as well as for each feature.
+4. The regression coefficients of the views are based on estimated out-of-sample predictions, improving generalization. 
+
+A multi-view stacking model fitted on this data could look something like Figure \@ref(fig:mvs-diag).
+
+```{r mvs-diag, out.width = '70%', echo = FALSE, fig.cap="A simple graphic representation of a multi-view stacking model including 3 views: structural MRI, functional MRI, and genetic information. A sub-model is fitted on each view separately, and the predictions of these sub-models are combined by the meta-learner into a single prediction. Note that the *n* persons are the same persons for each view."}
+knitr::include_graphics("img/mvs_diagram.png")
+```
+
+Multi-view stacking is a very broad framework: Any suitable learning algorithm can be chosen as the base and meta-learner. In this case, the outcome variable is binary (yes/no), so we will want to use some sort of classifier. Additionally, suitable penalty terms could be added to these classifiers to automatically select the views that are most important for prediction. Stacked penalized logistic regression (StaPLR) is a form of multi-view stacking where we use penalized logistic regression as both the base and meta-learner. If we use a penalty term that induces selection (such as the *lasso* [@lasso]) in the meta-learner, it will automatically select the most important views. We also typically put additional nonnegativity constraints on the meta-learner, for both technical reasons and to improve interpretability [@StaPLR]. Since the views most likely contain many features (data obtained from fMRI scans can contain millions of features [@StaPLR3]), we may apply a penalty term in the base-learner that induces shrinkage (such as *ridge regression*). If we apply StaPLR to the data, we may find that one of the views is not predictive of the outcome, like in Figure \@ref(fig:staplr-diag). 
+
+```{r staplr-diag, out.width = '70%', echo = FALSE, fig.cap="A simple graphic representation of how StaPLR can perform automatic view selection. In this (hypothetical) example, functional MRI was discarded from the model because it was not sufficiently predictive of the outcome in the presence of the other two views."}
+knitr::include_graphics("img/staplr_diagram.png")
+```
+
+Of course, Figures \@ref(fig:mvs-diag) and \@ref(fig:staplr-diag) are simplified and represent only the trained model. The training process itself is slightly more complicated, due to the inclusion of a cross-validation step. A more technically accurate description of MVS is given in Algorithm 1.
+
+```{r alg, out.width = '70%', echo = FALSE, fig.cap="", fig.align='center'}
+knitr::include_graphics("img/algorithm_1.png")
+```
+
+We denote the views by $X^{(v)}, v = 1 \dots V$. The outcome variable is denoted by $y$. Learning algorithms are denoted by the letter $A$, and classifiers by the letter $f$. For each of the views, a trained classifier $\hat{f}_v$ is obtained by applying the base-learning algorithm $A_{\text{b}}$ to the $X^{(v)}$ and the outcome $y$. We then apply $k$-fold cross-validation for each of these base-classifiers to obtain a vector of estimated out-of-sample predictions which we denote by $z^{(v)}$. We assume (and recommend) that these predictions take the form of predicted probabilities instead of hard class labels. The vectors $z^{(v)}, v = 1 \dots V$, are concatenated column-wise (i.e., `cbind`) into the matrix $Z$. The matrix $Z$ is then used together with outcome $y$ to train the meta-learning algorithm $A_{\text{m}}$ and obtain the meta-classifier $\hat{f}_{\text{meta}}$. The final classifier is then given by using the output of the base-level classifiers as the input for the meta-classifier. This whole process can also be represented as a flowchart, which is shown in Figure \@ref(fig:staplr-flow).
+
+```{r staplr-flow, out.width = '70%', echo = FALSE, fig.cap="The MVS algorithm represented as a flow diagram. StaPLR denotes the special case where all learners are penalized logistic regression learners. Figure adapted from [@StaPLR4]"}
+knitr::include_graphics("img/staplr_flow.png")
+```
+
+Further technical details about MVS/StaPLR can be found in [@StaPLR]. For other possible choices of the meta-learner see [@StaPLR2]. Although the example discussed above is hypothetical, a real application of multi-view stacking for Alzheimer's disease classification on the basis of MRI data is described in [@StaPLR3]; this paper also generalized multi-view stacking to more than two levels. For multi-view stacking with missing data see
+[@StaPLR4].
+
+# Why package `mvs`?
+
+The multi-view stacking methodology was introduced by Li et al. [-@Li2011], and recently popularized by @multiview_stacking, but no software packages implementing the methodology were made publicly available. We further investigated and extended the methodology, and found that it has many favorable properties [@StaPLR; @StaPLR2; @StaPLR3; @StaPLR4]. A small number of packages for multi-view learning were available on the Comprehensive R Archive Network (CRAN) at the time of the first release of `mvs`: `Spectrum` [@spectrum], `LUCIDus` [@lucidus] and `multiview` [@multiview], but none of these packages included multi-view stacking. Note that earlier development versions of `mvs` were also called `multiview`, but the name has been changed since it was claimed by a different package [@multiview] which has no relation to multi-view stacking. Development versions of `mvs` have been used, among other applications, to analyze multi-view gene expression [@StaPLR; @StaPLR2] and multi-view magnetic resonance imaging (MRI) data [@StaPLR3; @StaPLR4]. 
+
+# Overview of package functionality
+
+`mvs` is available on [CRAN](https://doi.org/10.32614/CRAN.package.mvs) and [GitLab](https://gitlab.com/wsvanloon/mvs). Below, we briefly discuss the core functionality of the package. For examples of usage see [Using `mvs` step-by-step]. A detailed overview of all the function arguments can be found in the [package reference manual](https://CRAN.R-project.org/package=mvs).
+
+## Model fitting
+
+The primary application of `mvs` is to fit multi-view stacking (MVS) models. The implementation of MVS is based on an extension of the *Stacked Penalized Logistic Regression* (StaPLR) algorithm [@StaPLR]. `mvs` features two main functions for fitting MVS models:
+
+* `StaPLR` is used to fit penalized and stacked penalized regression models with up to two levels. The minimum required input is the total feature matrix (`x`), the outcome variable (`y`), and a vector denoting to which view each feature corresponds (`view_index`). The `StaPLR` function has a few special options unique to models with only two levels.
+
+* `MVS` is used to fit multi-view stacking models with two or more levels. The minimum required input is the total feature matrix (`x`), the outcome variable (`y`), and either a vector (if there are only two levels) or a matrix of dimensions [$\textit{number of features} \times (\textit{number of levels} - 1)$] denoting to which view each feature corresponds at each level (`views`). MVS models with more than are appropriate when the data have a hierarchical multi-view structure, that is, the features are nested in views, which are themselves nested in larger views, and so on [@StaPLR3].
+
+For more technical arguments see the documentation included with `mvs`. The individual sub-problems are optimized using coordinate descent via the R package `glmnet` [@glmnet]. Users of `glmnet` will feel right at home since `mvs` uses a very similar syntax. 
+
+### Parallelization
+
+One of the main advantages of MVS is that, at each level of the hierarchy, *all sub-problems are independent*. This means that these sub-problems can be calculated in parallel. `mvs` supports parallel computation through `foreach` [@foreach], assuming a parallel back-end is registered [for more information about registering a parallel back-end in R see @parallel_vignette]. Parallel computation can be enabled using the function argument `parallel`. 
+
+### Model generalizations
+
+- Although originally developed for binary outcome variables, `mvs` can be used to model outcome variables with different distributions. Binomial, Gaussian and Poisson distributions are currently supported through the function argument `family`.
+- As of version 2.0.0, `mvs` supports the use of model relaxation (as used in, e.g., the relaxed lasso [@simplified_relaxed_lasso]). Model relaxation can be enabled for the entire hierarchy, or only for specific levels, through the function argument `relax`. Use of model relaxation is generally only sensible if `alpha` > 0. 
+- As of version 2.0.0, `mvs` supports the use of adaptive weights (as used in, e.g., the adaptive lasso [@adaptive_lasso]). Adaptive weights can be enabled for the entire hierarchy, or only for specific levels, through the function argument `adaptive`.  Adaptive weights are initialized using ridge regression as described in @StaPLR2. Use of adaptive weights is generally only sensible if `alpha` > 0.
+- As of version 2.1.0, `mvs` supports the use of random forests [@Breiman2001; @randomForest] as base or meta-learner(s). 
+
+## View importance
+
+In a two-level StaPLR model, the meta-level regression coefficient of each view can be used as a measure of that view’s importance, since these regression coefficients are effectively on the same scale [@StaPLR]. In hierarchical StaPLR/MVS models with more than two levels this does not necessarily apply, since these coefficients may correspond to different sub-models at different levels of the hierarchy. The *minority report measure* (MRM) was developed to quantify the importance of a view at any level of the hierarchy [@StaPLR3]. The MRM quantifies how much the prediction of the complete stacked model changes as the view-specific prediction of view *i* changes from *a* (default value 0) to *b* (default value 1), while the other predictions are kept constant (the recommended value being the mean of the outcome variable) [@StaPLR3]. As of version 2.0.0, the MRM can be calculated using `MRM`.
+
+## Handling missing data
+
+In practice, it is likely that not all views are measured for all observations. When a view is missing for some observations, typical approaches are:
+
+1. Remove any observations with at least one missing value (*list-wise deletion*)
+2. Replace any missing values with values calculated from the observed data (*imputation*)
+
+The first approach is not recommended since it is very wasteful; often more values are removed through list-wise deletion than were initially missing. The second approach is preferable, but often unrealistic. For example, if the missing view is an MRI scan, this means having to impute millions of values, often from high-dimensional observed data, which is computationally infeasible for all but the simplest imputation algorithms [@StaPLR4]. As of version 2.0.0, `mvs` therefore supports a third option: *meta-level imputation*. Instead of imputing the raw data, meta-level imputation uses the complete observations for each view to generate cross-validated predictions, and performs imputation in the reduced space (see Figure \@ref(fig:missing-data)).
+
+```{r missing-data, out.width = '70%', echo = FALSE, fig.cap="A simple graphic representation of meta-level imputation. Assume, for example, that the three views consist of, respectively, 100, 1000 and 10,000 features. Now, say that there are 10 observations which have missing values on view $X^{(2)}$. Then in traditional imputation we would have to impute 10 × 1000 = 10,000 values whereas in list-wise deletion 10 × (100 + 10,000) = 101,000 values would be deleted even though they were observed. However, in meta-level imputation only 10 values have to be imputed, and no observed values are deleted. Figure adapted from [@StaPLR4]."}
+knitr::include_graphics("img/missing_data.png")
+```
+
+This is much faster than traditional imputation and leads to comparable performance [@StaPLR4]. It allows the use of state-of-the-art imputation algorithms which would otherwise be too computationally intensive [@StaPLR4]. The following imputation methods are currently supported:
+
+-   `mean` performs meta-level (unconditional) mean imputation.
+-   `mice` performs meta-level predictive mean matching. It requires the
+    R package `mice` [@mice].
+-   `missForest` performs meta-level missForest imputation. It requires
+    the R package `missForest` [@missForest].
+
+Additionally, `mvs` includes the option to 'pass' the missing values through to the meta-level without imputing them, allowing the user to use a different imputation scheme of their choice. Options for missing data handling can be specified directly through model fitting using the arguments `na.action` and `na.arguments`. For more details about meta-level imputation see @StaPLR4.  
+
+# Using `mvs` step-by-step
+
+In this section, we cover how to use the basic functions of `mvs` in practice, and show some example usage on small simulated data sets.
+
+## Installation
+
+The current stable release can be installed directly from CRAN:
+
+```{r, eval=F}
+install.packages("mvs")
+```
+
+The current development version can be installed from GitLab using
+package **`devtools`**:
+
+```{r, eval=F}
+devtools::install_gitlab("wsvanloon/mvs@develop")
+```
+
+The package can then be loaded using:
+
+```{r, eval=F}
+library(mvs)
+```
+
+## Fitting a basic model
+
+We first generate a very simple simulated data set:
+
+```{r}
+set.seed(123)
+n <- 100
+X <- matrix(rnorm(8500), nrow=n, ncol=85)
+b <- c(rep(10, 65), rep(0, 20)) * ((rbinom(85, 1, 0.5)*2)-1)
+eta <- X %*% b
+p <- 1 /(1 + exp(-eta))
+y <- rbinom(n, 1, p)
+views <- c(rep(1,45), rep(2,20), rep(3,20))
+```
+
+This data set consists of 100 observations of 3 views. View 1 contains 45 features whereas View 2 and View 3 contain 20 features each. The first two views are truly related to the outcome, whereas View 3 is just noise. Now we will apply a simple 2-level MVS model to the data, like so:
+
+```{r, results='hide', message=FALSE}
+fit <- MVS(x=X, y=y, views=views, alphas=c(0,1), family="binomial")
+```
+
+Argument `x` is the full data matrix, and `y` is the outcome variable. Argument `views` is a vector which denotes to which view each feature belongs. Argument `alphas` defines the penalty parameter for each level. Without going into much technical detail, a value of 0 means shrinkage is applied (akin to ridge regression [@ridge; @ridge_logistic]), while a value of 1 means selection is applied (akin to the lasso [@lasso]), while a value in between corresponds to the so-called 'elastic net' [@elasticnet]. So, `alphas=c(0,1)` means we will select or discard complete views. Finally, we use `family="binomial"` since the outcome variable is binary. For other types of outcome variables we might use the `gaussian` or `poisson` family. Note that for the last two arguments we are using the default values, so they could have been omitted from the call like so:
+
+```{r, eval=F}
+fit <- MVS(x=X, y=y, views=views)
+```
+
+Instead of `MVS()` we could have also used `mvs()` since they refer to the same function. Since this model has only two levels, we could have also used the `StaPLR()` function to fit the model. However, we typically recommend using the `MVS()` function, since it is more general. Fitting the model will show a progress bar in the R console. Once the model has been fitted, we can extract model coefficients using `coef()`. In this case we are primarily interested in the coefficients at the second (i.e., meta) level: 
+
+```{r}
+coef(fit)$'Level 2'
+```
+
+These coefficients show that View 1 and View 2 were selected, while View 3 was discarded. Note that since all inputs to the meta-learner are on the same scale, these coefficients can be interpreted as-is without any further need for standardization. Their interpretation is the same as in any other logistic regression model (i.e., as predicted changes in the log-odds). The base-level coefficients can be viewed using `coef(fit)$'Level 1'`, but since there are 85 of them, we will not print them here. The fitted model can also be used to predict the outcome for new observations. For example, if we have the following two new observations:
+
+```{r}
+new_X <- matrix(rnorm(2*85), nrow=2)
+```
+
+We can obtain their predicted outcomes using
+
+```{r}
+predict(fit, new_X)
+```
+
+Note that since we are using a probabilistic classifier, the predicted outcomes are probabilities rather than class labels. If we want class labels instead, we can use
+
+```{r}
+predict(fit, new_X, predtype="class")
+```
+
+### Random forests
+
+By default, `mvs` uses the extended StaPLR algorithm to fit the learners, which means all the sub-models are generalized linear models (GLMs). Depending on the outcome variable, we can set the `family` argument to either `gaussian`, `binomial` or `poisson`. In addition to GLMs, `mvs` also supports the use of random forests [@Breiman2001; @randomForest]. To use random forests instead of GLMs, simply set the `type` argument to `RF`:
+
+```{r, eval=FALSE}
+fit <- MVS(x=X, y=y, views=views, type="RF")
+```
+
+You can also mix and match random forests with GLMs. For example, to use random forests as the base-learners and nonnegative logistic lasso as the meta-learner, we can use
+
+```{r, results='hide', message=FALSE}
+fit <- MVS(x=X, y=y, views=views, type=c("RF", "StaPLR"))
+```
+
+Note that if we extract the model coefficients using `coef()` we get only the coefficients of the meta-learner:
+
+```{r}
+coef(fit)
+```
+
+This is because random forests do not have regression coefficients in the traditional sense. However, we can calculate feature importance measures using `importance()`:
+
+```{r,R.options=list(max.print=5)}
+importance(fit)
+```
+
+For an overview of the different feature importance measures available, see the [`randomForest` package manual](https://CRAN.R-project.org/package=randomForest) [@randomForest_manual]. For more information about random forests in general see, for example, @Breiman2001. 
+
+## Parallel computing
+
+Multi-view stacking is computationally attractive because at any level of the model all sub-problems are independent, which means they can be computed in parallel. `mvs` supports parallel computing using `foreach` [@foreach] and `doParallel` [@doParallel]. Enabling parallel computing consists of two steps:
+
+1. Register a parallel back-end.
+2. Use the `mvs` option `parallel = TRUE`. 
+
+Registering a parallel back-end on a local machine is typically as simple as:
+
+```{r, eval=F}
+library(doParallel)
+registerDoParallel(cores = detectCores())
+```
+
+However, the specifics may vary from system to system. We therefore recommend checking the [doParallel vignette](https://CRAN.R-project.org/package=doParallel). Once the parallel back-end has been registered, fitting a model using parallel computation is as simple as:
+
+```{r, eval=F}
+fit <- MVS(x=X, y=y, views=views, parallel=TRUE)
+```
+
+
+## Fitting a model with more than two levels
+
+In practice, it is possible that the multi-view structure consists of more than two levels. For example, one might have features (base level) which are grouped by brain area (middle level) and further grouped by the type of MRI scan they were obtained from (top level). Such a hierarchical analysis is described in detail in [@StaPLR3]. Fitting such a model using `mvs` is very simple. Consider a modified version of the example used above:
+
+```{r}
+set.seed(123)
+n <- 100
+X <- matrix(rnorm(8500), nrow=n, ncol=85)
+b <- c(rep(0, 15), rep(10, 40), rep(0, 30)) * ((rbinom(85, 1, 0.5)*2)-1)
+eta <- X %*% b
+p <- 1 /(1 + exp(-eta))
+y <- rbinom(n, 1, p)
+
+sub_views <- c(rep(1:3, each=15), rep(4:5, each=10), rep(6:9, each=5))
+top_views <- c(rep(1,45), rep(2,20), rep(3,20))
+```
+
+Here, we again have 3 views, but they are now further divided into sub-views. View 1 is divided into 3 sub-views of 15 features each, of which only the second and third sub-view are truly related to the outcome. View 2 is divided into 2 sub-views of 10 features each, of which only the first sub-view is related to the outcome. View 3 is subdivided into 4 sub-views of 4 features each, none of which are related to the outcome. The main difference when applying `MVS` to this data compared with the 2-level model is that `views` should now be a matrix where each column is a vector denoting to which view each feature corresponds *at that level*. The structure is "bottom-up" from left to right, meaning the first column corresponds to the lowest level in the hierarchy, the second column to the level above that, and so on. For the example data above, it looks like this:
+
+```{r}
+views <- cbind(sub_views, top_views)
+```
+
+Note that although `views` has two columns, there are three levels in total: (1) the features, (2) the sub-views, and (3) the top level views. The number of levels can be determined using the `levels` argument. For each level, we need to specify the desired penalty parameter, which is indicated using the same `alphas` argument described in the previous section, except it is now a vector of length 3 instead of length 2. We will assume here that the goal is to select top level views and sub-views, but not individual features within sub-views. Finally, we also need to indicate for each level if we want to include nonnegativity constraints using argument `nnc`, which is a vector which takes value 1 if nonnegativity constraints should be applied, and 0 otherwise. We generally recommend to apply nonnegativity constraints at all levels above the feature level. The call to fit a three-level MVS model is then:
+
+```{r, results='hide', message=FALSE}
+fit <- MVS(x=X, y=y, views=views, levels=3, alphas=c(0,1,1), nnc=c(0,1,1))
+```
+
+The top level view coefficients are:
+
+```{r}
+coef(fit)$'Level 3'
+```
+
+Again, Views 1 and 2 are selected, while View 3 is discarded. The sub-view coefficients for the first two can be observed by:
+
+```{r}
+coef(fit)$'Level 2'
+```
+
+We can observe that for View 1, the second and third sub-view were selected, while for View 2, the first sub-view was selected. Note that the coefficients corresponding to the sub-views of View 3 can be ignored, since View 2 was discarded in its entirety (although in this case, the sub-view coefficients are also all zero). Note that coefficients of sub-views that are not part of the same top level view cannot be directly compared, because they are part of different sub-models. To compare the effects of sub-views that are part of different top level views, we can employ the *minority report measure* (MRM) [@StaPLR3]. The MRM calculates how much the final prediction of the complete stacked model changes as the prediction obtained from a sub-view changes from `a` (default value `0`) to `b` (default value `1`), while the predictions of the other views are kept constant at `constant` (the recommended value for which is `mean(y)`). The MRM for the 9 sub-views can be calculated by:
+
+```{r}
+MRM(fit, constant = mean(y), level=2)
+```
+
+The value of the MRM ranges from zero to one, with larger values indicating an increased effect size. Note that if a view was excluded from the model, the value of the MRM is zero, since it has no effect on the outcome. More details about the MRM can be found in [@StaPLR3]. 
+
+## Fitting a model with missing data
+
+Consider the same simulated data set we used in [Fitting a basic model]:
+
+```{r}
+set.seed(123)
+n <- 100
+X <- matrix(rnorm(8500), nrow=n, ncol=85)
+b <- c(rep(10, 65), rep(0, 20)) * ((rbinom(85, 1, 0.5)*2)-1)
+eta <- X %*% b
+p <- 1 /(1 + exp(-eta))
+y <- rbinom(n, 1, p)
+views <- c(rep(1,45), rep(2,20), rep(3,20))
+```
+
+But now, assume that half of the observations have missing values on the first view:
+
+```{r}
+X[1:50, 1:45] <- NA
+```
+
+If we try to fit the same model as before, we get an error:
+
+```{r, message=FALSE, error=TRUE}
+fit <- MVS(x=X, y=y, views=views)
+```
+
+This is because the default value of the function parameter `na.action` is `fail`, which causes `MVS` to stop and warn the user about the presence of missing values. The error message tells us there are three possible ways to continue, namely (1) to remove all observations with missing data, (2) to impute the missing values before running `mvs` or (3) to choose a different value for `na.action`. As discussed in [Handling missing data], option (1) is very wasteful, in this case deleting half of our observations. Option (2) is preferable, but quickly becomes computationally infeasible as the number of missing values and/or features increases [@StaPLR4]. However, `mvs` allows for three different types of meta-level imputation using the `na.action` argument, which is much faster but obtains similar results (see [Handling missing data] for more details). Here we will use meta-level predictive mean matching using `mice` [@mice]. To perform the meta-level imputation using `mice`, simply use:
+
+```{r, message=FALSE, results='hide'}
+fit <- MVS(x=X, y=y, views=views, na.action="mice")
+```
+
+Running this will print progress on both the MVS model fitting and the imputation to the console. The meta-level coefficients can again then be obtained using 
+
+```{r}
+coef(fit)$'Level 2'
+```
+Information about the performed imputation are stored in the `mvs` object together with the matrix of cross-validated predictions:
+
+```{r}
+attributes(fit$'Level 1'$CVs)
+```
+This shows us that the first view was imputed using predictive mean matching ("pmm"), whereas the other views were not imputed (since they had no missing values). Note that the outcome variable `y` was also used in the imputation process, as is generally recommended [@Stef2018]. The attributes also show us that the given matrix of cross-validated predictions is an average of 5 different imputations. The number of imputations, or any other `mice` arguments can be changed by providing a list of arguments and their values using the `na.arguments` option. For example, to change the number of imputations to 10 use:
+
+```{r, message=FALSE, results='hide'}
+fit <- MVS(x=X, y=y, views=views, na.action="mice", na.arguments=list(m = 10))
+```
+
+```{r}
+attributes(fit$'Level 1'$CVs)
+```
+
+In addition to imputation using `mice`, meta-level imputation using the `mean` and meta-level imputation with `missForest` [@missForest] are also supported. Note that there is another possible value for `na.action`, namely `pass`. Using this value does not perform any imputation, but instead "passes" the missingness onto the meta-level:
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+fit <- MVS(x=X, y=y, views=views, na.action="pass")
+```
+
+```{r, R.options=list(max.print=30)}
+fit$`Level 1`$CVs
+```
+
+This option is primarily useful for implementing custom imputation schemes other than those supported by `mice` or `missForest`. 
+
+# Acknowledgements
+
+I acknowledge the contribution of Marjolein Fokkema, who helped prepare `mvs` for submission to CRAN and worked on the implementation of model relaxation and random forests. I acknowledge the support of Mark de Rooij and Botond Szabo during the earlier stages of this project.
+
+
+# References

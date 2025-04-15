@@ -1,0 +1,61 @@
+March 03, 2025 - 'mvs' - version 2.1.0
+- New feature: support for the use of random forests as base or meta learner.
+- Added package vignette.
+- Fixed a bug that caused MVS to train a meta-learner when na.action was set to pass. Note that this bug did not affect the rest of the results in any way.
+- MVS no longer requires an explicit number of levels; the number of levels can now be determined based on the views argument. 
+- Added a warning for alphas/nnc not being of equal length to the number of levels.
+
+August 20, 2024 - 'mvs' - version 2.0.0
+- New feature: support for model relaxation (i.e. the relaxed lasso and variants).
+- New feature: support for adaptive weights (i.e. the adaptive lasso and variants).
+- New feature: minority report measure (MRM). This measure allows the user to calculate view importance at any level of a multi-view stacking model.  
+- New feature: missing data handling. Missing values can now be "propagated" through the MVS model and/or imputed at the meta-level or intermediate levels. The following meta-level imputation methods are supported:
+	- mean imputation
+	- predictive mean matching (requires 'mice')
+	- missForest imputation (requires 'missForest') 
+
+August 14, 2023 - 'mvs' - version 1.0.2
+- Clarified StaPLR acronym in DESCRIPTION.
+- Added name and year to references in DESCRIPTION.
+- Replaced Author and Maintainer field with Authors@R field in DESCRIPTION.
+
+August 08, 2023 - 'mvs' - Version 1.0.1
+- Fixed typo in Rbuildignore.
+- Fixed DESCRIPTION title case.
+- Fixed DOI-related NOTE in mvs-package.Rd
+
+August 08, 2023 - 'mvs' - Version 1.0.0
+- Changed package name to 'mvs'. 
+- Updated documentation to reflect the name change from 'multiview' to ' mvs'.
+- Updated DOI makeup in description and fixed typos.
+- Updated tests. Tests now utilize testthat functionality. 
+
+July 31, 2023 - Version 0.4.0
+- Changes in preparation for CRAN upload.
+- Added tests for functions StaPLR and MVS.
+- Added support for Gaussian and Poisson families.
+- Improved error handling for function MVS. 
+- Added lowercase aliases staplr and mvs.
+- Added CITATION.
+- Updated README.
+
+November 09, 2022 - Version 0.3.2
+- Fixed an issue where using StaPLR would set the value of the glmnet.control parameter fdev to zero for the rest of the user session. Parameter fdev is now correctly reset to the value before the function call using on.exit(). 
+
+February 23, 2021 - Version 0.3.1
+- MVS() now correctly applies nonnegativity constraints at the intermediate level(s) if specified.
+- The MVS() example has been modified slightly.
+
+February 4, 2021 - Version 0.3.0
+- multiview is now licenced under GNU GPLv2
+- Added a new function MVS() which provides a more modular approach to multi-view stacking.
+- MVS() allows the application of StaPLR with more than 2 levels.
+- MVS() outputs objects of S3 class MVS which have associated coef() and predict() methods.
+- Added an option to StaPLR to skip training the meta-learner. The meta-learner is automatically skipped when only one view is provided.
+- Added an option to StaPLR to skip the generation of cross-validated predictions.
+- StaPLR output no longer contains the original training data.
+- The default number of folds for StaPLR is now 10 (was 5)
+- The default value of lambda.ratio is now 1e-04 (was 0.01).
+- By default, StaPLR no longer checks the version of glmnet, nor does it make suggestions on which version to use. If desired, the version check can still be enabled by using StaPLR(..., skip.version=TRUE).
+- The R project file has been removed and is no longer tracked in the repository.
+

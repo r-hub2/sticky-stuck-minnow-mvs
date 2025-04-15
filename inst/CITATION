@@ -1,0 +1,32 @@
+bibentry(bibtype = "Article",
+  title          = "Stacked penalized logistic regression for selecting views in multi-view learning",
+  author         = c(as.person("Wouter van Loon"), as.person("Marjolein Fokkema"), as.person("Botond Szabo"), as.person("Mark de Rooij")),
+  journal        = "Information Fusion",
+  year           = "2020",
+  volume         = "61",
+  pages          = "113-123",
+  doi            = "10.1016/j.inffus.2020.03.007",
+  header         = "To cite mvs/staplr in publications use:"
+)
+
+bibentry(bibtype = "Article",
+  title          = "Analyzing hierarchical multi-view {MRI} data with {StaPLR}: an application to {A}lzheimer's disease classification",
+  author         = c(as.person("Wouter van Loon"), as.person ("Frank de Vos"), as.person("Marjolein Fokkema"), as.person("Botond Szabo"), as.person("Marisa Koini"), as.person("Reinhold Schmidt"), as.person("Mark de Rooij")),
+  journal        = "Frontiers in Neuroscience",
+  year           = "2022",
+  volume         = "16",
+  pages          = "830630",
+  doi            = "10.3389/fnins.2022.830630",
+  header         = "To cite hierarchical mvs/staplr in publications also use:"
+)
+
+bibentry(bibtype = "Article",
+  title          = "Imputation of missing values in multi-view data",
+  author         = c(as.person("Wouter van Loon"), as.person("Marjolein Fokkema"), as.person ("Frank de Vos"), as.person("Marisa Koini"), as.person("Reinhold Schmidt"), as.person("Mark de Rooij")),
+  journal        = "Information Fusion",
+  year           = "2024",
+  volume         = "111",
+  pages          = "102524",
+  doi            = "10.1016/j.inffus.2024.102524",
+  header         = "For meta-level missing value imputation please cite:"
+)
